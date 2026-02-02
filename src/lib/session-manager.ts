@@ -26,7 +26,7 @@ export class SessionManager {
         server: {
           $schema: 'https://opencode.ai/config.json',
           port,
-          hostname: 'http://127.0.0.1'
+          hostname: 'localhost'
         }
       }, null, 2)
     )
@@ -75,22 +75,22 @@ export class SessionManager {
     const session = await this.getSession(sessionId)
     if (!session) throw new Error('Session not found')
 
+      const port = getRandomPort()
     const sessionDir = `${SESSIONS_DIR}/${sessionId}/repo`
 
     const opencodeProcess = Bun.spawn(
-      ['opencode', 'serve', '--port', session.port.toString(), '--hostname', 'http://127.0.0.1'],
+      ['/opt/homebrew/bin/opencode', 'serve', '--port', port.toString(), '--hostname', 'localhost'],
       {
         cwd: sessionDir,
-        stdout: 'pipe',
-        stderr: 'pipe',
+        env: {OPENCODE_SERVER_PASSWORD: "opencode"},
         onExit(proc, exitCode, signalCode, error) {
-          console.info('OpenCode process exited with code ' + exitCode)
+          console.info("OpenCode process exited", { exitCode, signalCode, error })
         },
       }
     )
 
     await db.update(schema.sessions)
-      .set({ status: 'running', pid: opencodeProcess.pid })
+      .set({ status: 'running', port, pid: opencodeProcess.pid, })
       .where(eq(schema.sessions.id, sessionId))
   }
 
@@ -135,7 +135,7 @@ export class SessionManager {
       pid: result.pid,
       status: result.status,
       createdAt: result.createdAt,
-      serverUrl: `http://127.0.0.1:${result.port}`
+      serverUrl: `http://localhost:${result.port}`
     }
   }
 
@@ -151,7 +151,7 @@ export class SessionManager {
       port: r.port,
       status: r.status,
       createdAt: r.createdAt,
-      serverUrl: `http://127.0.0.1:${r.port}`
+      serverUrl: `http://localhost:${r.port}`
     }))
   }
 
