@@ -1,5 +1,8 @@
 import { Elysia, t } from 'elysia'
-import { sessionManager } from '../lib/session-manager'
+import { eq } from 'drizzle-orm'
+import { sessionManager } from '@lib/session-manager'
+import { db, schema } from '@db'
+import { getCookieSchema } from '@api'
 
 export const sessionsRouter = new Elysia()
   .get('/api/sessions', async () => {
@@ -13,14 +16,27 @@ export const sessionsRouter = new Elysia()
     }
     return { success: true, data: session }
   })
-  .post('/api/sessions', async ({ body }) => {
+  .post('/api/sessions', async ({ body, cookie }) => {
     try {
+      const tokenId = cookie.github_token_id.value
+      let githubToken: string | undefined
+
+      if (tokenId) {
+        const [tokenRecord] = await db.select()
+          .from(schema.githubTokens)
+          .where(eq(schema.githubTokens.id, tokenId))
+          .limit(1)
+        
+        if (tokenRecord) {
+          githubToken = tokenRecord.accessToken
+        }
+      }
+
       const session = await sessionManager.createSession({
         repo: body.repo,
-        branch: body.branch,
-        githubToken: body.githubToken
+        branch: body.branch
       })
-      await sessionManager.cloneRepo(session.id, body.githubToken)
+      await sessionManager.cloneRepo(session.id, githubToken)
       await sessionManager.startOpenCode(session.id)
       return { success: true, data: session }
     } catch (error) {
@@ -31,10 +47,10 @@ export const sessionsRouter = new Elysia()
       }
     }
   }, {
+    cookie: getCookieSchema(),
     body: t.Object({
       repo: t.String(),
-      branch: t.String(),
-      githubToken: t.Optional(t.String())
+      branch: t.String()
     })
   })
   .post('/api/sessions/:id/start', async ({ params }) => {

@@ -40,6 +40,15 @@ export interface RepoInfo {
   private: boolean
 }
 
+export interface UserRepoInfo {
+  id: number
+  name: string
+  full_name: string
+  private: boolean
+  default_branch: string
+  html_url: string
+}
+
 export class GitHubClient {
   private token: string
   private baseUrl = 'https://api.github.com'
@@ -75,6 +84,11 @@ export class GitHubClient {
 
   async listBranches(owner: string, repo: string): Promise<BranchInfo[]> {
     const { data } = await this.request<BranchInfo[]>(`/repos/${owner}/${repo}/branches`)
+    return data
+  }
+
+  async listUserRepos(): Promise<UserRepoInfo[]> {
+    const { data } = await this.request<UserRepoInfo[]>('/user/repos?per_page=100&sort=updated')
     return data
   }
 

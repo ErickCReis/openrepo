@@ -9,7 +9,6 @@ const SESSIONS_DIR = './sessions'
 export interface CreateSessionInput {
   repo: string
   branch: string
-  githubToken?: string
 }
 
 export class SessionManager {
@@ -38,7 +37,6 @@ export class SessionManager {
       branch: input.branch,
       port,
       status: 'stopped',
-      githubToken: input.githubToken || null,
       createdAt: new Date()
     }).returning()
 
@@ -84,7 +82,10 @@ export class SessionManager {
       {
         cwd: sessionDir,
         stdout: 'pipe',
-        stderr: 'pipe'
+        stderr: 'pipe',
+        onExit(proc, exitCode, signalCode, error) {
+          console.info('OpenCode process exited with code ' + exitCode)
+        },
       }
     )
 

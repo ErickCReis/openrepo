@@ -4,7 +4,7 @@ import index from './index.html'
 import { db, schema } from './db'
 import { apiRouter } from './api'
 
-const app = new Elysia()
+const app = new Elysia({ cookie: { secrets: process.env.COOKIE_SECRET || 'change-this-in-production' } })
   .get('/', index)
   .use(apiRouter)
   .onError(({ code, error }) => {
