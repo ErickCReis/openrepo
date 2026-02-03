@@ -8,8 +8,8 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
-export const authRouter = new Elysia()
-  .get("/api/auth/github", () => {
+export const authRouter = new Elysia({ prefix: "/auth" })
+  .get("/github", () => {
     if (!GITHUB_CLIENT_ID) {
       throw status(
         500,
@@ -19,14 +19,14 @@ export const authRouter = new Elysia()
 
     const redirectUrl = new URL("https://github.com/login/oauth/authorize");
     redirectUrl.searchParams.set("client_id", GITHUB_CLIENT_ID);
-    redirectUrl.searchParams.set("redirect_uri", `${APP_URL}/api/auth/github/callback`);
+    redirectUrl.searchParams.set("redirect_uri", `${APP_URL}/auth/github/callback`);
     redirectUrl.searchParams.set("scope", "repo read:user");
     redirectUrl.searchParams.set("state", crypto.randomUUID());
 
     return redirect(redirectUrl.toString());
   })
   .get(
-    "/api/auth/github/callback",
+    "/github/callback",
     async ({ query, cookie }) => {
       const { code, error } = query;
 
@@ -96,7 +96,7 @@ export const authRouter = new Elysia()
     },
   )
   .get(
-    "/api/auth/github/user",
+    "/github/user",
     async ({ cookie }) => {
       const tokenId = cookie.github_token_id.value;
 
@@ -125,7 +125,7 @@ export const authRouter = new Elysia()
     },
   )
   .delete(
-    "/api/auth/github",
+    "/github",
     ({ cookie }) => {
       cookie.github_token_id.remove();
     },

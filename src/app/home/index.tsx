@@ -18,6 +18,9 @@ import { CreateSessionForm } from "./create-session-form";
 import { SessionCard } from "./session-card";
 import { CreateProjectForm } from "./create-project-form";
 import { ProjectCard } from "./project-card";
+import type { Treaty } from "@elysiajs/eden";
+
+type Session = Treaty.Data<typeof api.sessions.get>[number];
 
 export function Home() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -40,18 +43,35 @@ export function Home() {
     },
   });
 
-  const { data: sessions, isLoading } = useQuery({
-    queryKey: ["sessions"],
-    queryFn: () => api.sessions.get().then((res) => res.data),
-    refetchInterval: 5000,
-  });
-
   const { data: projects, isLoading: isLoadingProjects } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.projects.get().then((res) => res.data),
   });
 
+  const [sessions, setSessions] = useState<Session[] | null>([]);
+  const isLoading = sessions === null;
   const isError = sessions === null;
+
+
+  useEffect(() => {
+    const ws = api.sessions.sync.ws.subscribe();
+    ws.on("open", () => {
+      console.log("ws opened");
+    });
+
+    ws.on("close", () => {
+      console.log("ws closed");
+    });
+
+    ws.subscribe((message) => {
+      console.log("message", message);
+      setSessions(message.data);
+    });
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -136,7 +156,9 @@ export function Home() {
         {isLoading && (
           <div className="text-center py-12 text-muted-foreground">Loading sessions...</div>
         )}
-        {isError && <div className="text-center py-12 text-destructive">Failed to load sessions</div>}
+        {isError && (
+          <div className="text-center py-12 text-destructive">Failed to load sessions</div>
+        )}
         {!isLoading && !isError && sessions?.length === 0 && (
           <Card className="text-center py-12">
             <CardContent>

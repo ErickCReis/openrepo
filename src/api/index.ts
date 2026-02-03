@@ -10,7 +10,7 @@ export function getCookieSchema() {
   });
 }
 
-export const apiRouter = new Elysia()
+export const apiRouter = new Elysia({ prefix: "/api" })
   .use(sessionsRouter)
   .use(projectsRouter)
   .use(githubRouter)

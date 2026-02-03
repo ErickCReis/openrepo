@@ -34,7 +34,7 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
 
   const { data: userRepos, isLoading: isLoadingRepos } = useQuery({
     queryKey: ["userRepos"],
-    queryFn: () => api.auth.github.repos.get().then((res) => res.data),
+    queryFn: () => api.github.repos.get().then((res) => res.data),
     enabled: !!githubUser,
     retry: false,
   });

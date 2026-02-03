@@ -3,12 +3,41 @@ import { eq } from "drizzle-orm";
 import { sessionManager } from "@lib/session-manager";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
+import type { ElysiaWS } from "elysia/ws";
 
-export const sessionsRouter = new Elysia()
-  .get("/api/sessions", async () => {
+const sessionSockets = new Set<ElysiaWS>();
+async function broadcastSessions() {
+  const sessions = await sessionManager.listSessions();
+  for (const ws of sessionSockets) {
+    ws.send(sessions);
+  }
+}
+
+export const sessionsRouter = new Elysia({ prefix: "/sessions" })
+  .ws("/sync/ws", {
+    response: t.Array(
+      t.Object({
+        id: t.String(),
+        repo: t.String(),
+        branch: t.String(),
+        status: t.Enum({ running: "running", stopped: "stopped" }),
+        createdAt: t.Date(),
+        serverUrl: t.String(),
+        port: t.Number(),
+      }),
+    ),
+    open: async (ws) => {
+      sessionSockets.add(ws);
+      broadcastSessions();
+    },
+    close: (ws) => {
+      sessionSockets.delete(ws);
+    },
+  })
+  .get("/", async () => {
     return await sessionManager.listSessions();
   })
-  .get("/api/sessions/:id", async ({ params }) => {
+  .get("/:id", async ({ params }) => {
     const session = await sessionManager.getSession(params.id);
     if (!session) {
       throw status(404, "Session not found");
@@ -16,7 +45,7 @@ export const sessionsRouter = new Elysia()
     return session;
   })
   .post(
-    "/api/sessions",
+    "/",
     async ({ body, cookie }) => {
       const tokenId = cookie.github_token_id.value;
       let githubToken: string | undefined;
@@ -39,6 +68,7 @@ export const sessionsRouter = new Elysia()
       });
       await sessionManager.cloneRepo(session.id, githubToken);
       await sessionManager.startOpenCode(session.id);
+      await broadcastSessions();
       return session;
     },
     {
@@ -49,26 +79,29 @@ export const sessionsRouter = new Elysia()
       }),
     },
   )
-  .post("/api/sessions/:id/start", async ({ params }) => {
+  .post("/:id/start", async ({ params }) => {
     await sessionManager.startOpenCode(params.id);
+    await broadcastSessions();
   })
-  .post("/api/sessions/:id/stop", async ({ params }) => {
+  .post("/:id/stop", async ({ params }) => {
     await sessionManager.stopSession(params.id);
+    await broadcastSessions();
   })
-  .delete("/api/sessions/:id", async ({ params }) => {
+  .delete("/:id", async ({ params }) => {
     await sessionManager.deleteSession(params.id);
+    await broadcastSessions();
   })
-  .get("/api/sessions/:id/files", async ({ params, query }) => {
+  .get("/:id/files", async ({ params, query }) => {
     return await sessionManager.listFiles(params.id, query.path || ".");
   })
-  .get("/api/sessions/:id/files/*", async ({ params }) => {
+  .get("/:id/files/*", async ({ params }) => {
     const filePath = params["*"];
     const file = await sessionManager.readFile(params.id, filePath);
     const content = await file.text();
     return { content, path: filePath };
   })
   .post(
-    "/api/sessions/:id/git",
+    "/:id/git",
     async ({ params, body }) => {
       return await sessionManager.runGitCommand(params.id, body.args);
     },
