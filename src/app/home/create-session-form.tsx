@@ -23,13 +23,12 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
 
   const { data: githubUser } = useQuery({
     queryKey: ["githubUser"],
-    queryFn: () => api.auth.github.user.get().then((res) => res.data?.data),
-    retry: false,
+    queryFn: () => api.auth.github.user.get().then((res) => res.data),
   });
 
   const { data: userRepos, isLoading: isLoadingRepos } = useQuery({
     queryKey: ["userRepos"],
-    queryFn: () => api.auth.github.repos.get().then((res) => res.data?.data ?? []),
+    queryFn: () => api.auth.github.repos.get().then((res) => res.data),
     enabled: !!githubUser,
     retry: false,
   });
@@ -42,7 +41,7 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
         .github({ owner: owner! })
         .repo({ repo: repo! })
         .branches.get()
-        .then((res) => res.data?.data ?? []),
+        .then((res) => res.data),
     enabled: !!githubUser && !!owner && !!repo,
     retry: false,
   });

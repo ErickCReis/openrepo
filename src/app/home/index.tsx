@@ -22,9 +22,27 @@ export function Home() {
 
   const { data: githubUser } = useQuery({
     queryKey: ["githubUser"],
-    queryFn: () => api.auth.github.user.get().then((res) => res.data?.data),
+    queryFn: () => api.auth.github.user.get().then((res) => res.data),
     retry: false,
   });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.auth.github.delete();
+      if (error) throw error.value;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["githubUser"] });
+    },
+  });
+
+  const { data: sessions, isLoading } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: () => api.sessions.get().then((res) => res.data),
+    refetchInterval: 5000,
+  });
+
+  const isError = sessions === null;
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -37,29 +55,10 @@ export function Home() {
       window.history.replaceState({}, "", window.location.pathname);
     } else if (error) {
       console.error("OAuth error:", error);
-      toast.error("GitHub authentication failed", {
-        description: error,
-      });
+      toast.error("GitHub authentication failed", { description: error });
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [queryClient]);
-
-  const disconnectMutation = useMutation({
-    mutationFn: async () => api.auth.github.delete(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["githubUser"] });
-    },
-  });
-
-  const {
-    data: sessions,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ["sessions"],
-    queryFn: () => api.sessions.get().then((res) => res.data?.data),
-    refetchInterval: 5000,
-  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

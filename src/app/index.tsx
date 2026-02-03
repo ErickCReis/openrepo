@@ -7,13 +7,20 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Toaster } from "@app/components/ui/sonner";
 import { Home } from "@app/home";
 
 import "@app/globals.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error) || "Something went wrong");
+    },
+  }),
+});
 
 const elem = document.getElementById("root")!;
 const app = (

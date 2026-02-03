@@ -1,4 +1,4 @@
-import { Elysia, redirect } from "elysia";
+import { Elysia, redirect, status } from "elysia";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
@@ -11,11 +11,10 @@ const APP_URL = process.env.APP_URL || "http://localhost:3000";
 export const authRouter = new Elysia()
   .get("/api/auth/github", () => {
     if (!GITHUB_CLIENT_ID) {
-      return {
-        success: false,
-        error:
-          "GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
-      };
+      throw status(
+        500,
+        "GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+      );
     }
 
     const redirectUrl = new URL("https://github.com/login/oauth/authorize");
@@ -75,6 +74,11 @@ export const authRouter = new Elysia()
               accessToken: github.accessToken,
             })
             .returning();
+
+          if (!inserted) {
+            throw status(500, "Failed to save GitHub token");
+          }
+
           tokenId = inserted.id;
         }
 
@@ -97,7 +101,7 @@ export const authRouter = new Elysia()
       const tokenId = cookie.github_token_id.value;
 
       if (!tokenId) {
-        return { success: false, error: "Not authenticated" };
+        throw status(401, "Not authenticated");
       }
 
       const [tokenRecord] = await db
@@ -107,16 +111,13 @@ export const authRouter = new Elysia()
         .limit(1);
 
       if (!tokenRecord) {
-        return { success: false, error: "Token not found" };
+        throw status(401, "Token not found");
       }
 
       return {
-        success: true,
-        data: {
-          id: tokenRecord.githubUserId,
-          username: tokenRecord.username,
-          email: tokenRecord.email,
-        },
+        id: tokenRecord.githubUserId,
+        username: tokenRecord.username,
+        email: tokenRecord.email,
       };
     },
     {
@@ -127,7 +128,6 @@ export const authRouter = new Elysia()
     "/api/auth/github",
     ({ cookie }) => {
       cookie.github_token_id.remove();
-      return { success: true };
     },
     {
       cookie: getCookieSchema(),

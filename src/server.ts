@@ -15,9 +15,9 @@ const app = new Elysia({
   .all("*", () => status(404))
   .onError(({ code, error }) => {
     console.error(`Error ${code}:`, error);
-    return new Response(error instanceof Error ? error.message : "Internal Error", {
-      status: code === "VALIDATION" ? 400 : 500,
-    });
+    const statusCode = code === "VALIDATION" ? 400 : 500;
+    const message = error instanceof Error ? error.message : "Internal Error";
+    return new Response(message, { status: statusCode });
   })
   .listen({ port: 3000 });
 
