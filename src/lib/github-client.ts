@@ -40,6 +40,14 @@ export interface RepoInfo {
   private: boolean;
 }
 
+export interface GitHubUser {
+  id: number;
+  login: string;
+  email: string | null;
+  name: string | null;
+  avatar_url: string;
+}
+
 export interface UserRepoInfo {
   id: number;
   name: string;
@@ -55,6 +63,37 @@ export class GitHubClient {
 
   constructor(token: string) {
     this.token = token;
+  }
+
+  static async exchangeCodeForToken(
+    code: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<GitHubClient> {
+    const response = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error_description || data.error);
+    }
+
+    return new GitHubClient(data.access_token);
+  }
+
+  get accessToken(): string {
+    return this.token;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<GitHubApiResponse<T>> {
@@ -75,6 +114,11 @@ export class GitHubClient {
 
     const data = await response.json();
     return { data, status: response.status };
+  }
+
+  async getUser(): Promise<GitHubUser> {
+    const { data } = await this.request<GitHubUser>("/user");
+    return data;
   }
 
   async getRepo(owner: string, repo: string): Promise<RepoInfo> {

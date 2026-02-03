@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Button } from "@app/components/ui/button";
 import { Card, CardContent } from "@app/components/ui/card";
@@ -32,9 +33,13 @@ export function Home() {
 
     if (success === "true") {
       void queryClient.invalidateQueries({ queryKey: ["githubUser"] });
+      toast.success("GitHub account connected successfully");
       window.history.replaceState({}, "", window.location.pathname);
     } else if (error) {
       console.error("OAuth error:", error);
+      toast.error("GitHub authentication failed", {
+        description: error,
+      });
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [queryClient]);
