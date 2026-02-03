@@ -57,6 +57,20 @@ export interface UserRepoInfo {
   html_url: string;
 }
 
+export interface WorkflowRunInfo {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  run_number: number;
+  event: string;
+  head_branch: string;
+  head_sha: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export class GitHubClient {
   private token: string;
   private baseUrl = "https://api.github.com";
@@ -244,6 +258,23 @@ export class GitHubClient {
       `/repos/${owner}/${repo}/pulls/${pullNumber}`,
     );
     return data;
+  }
+
+  async listWorkflowRuns(
+    owner: string,
+    repo: string,
+    options: { branch?: string; perPage?: number } = {},
+  ): Promise<WorkflowRunInfo[]> {
+    const params = new URLSearchParams();
+    params.set("per_page", String(options.perPage ?? 1));
+    if (options.branch) {
+      params.set("branch", options.branch);
+    }
+
+    const { data } = await this.request<{ workflow_runs: WorkflowRunInfo[] }>(
+      `/repos/${owner}/${repo}/actions/runs?${params.toString()}`,
+    );
+    return data.workflow_runs;
   }
 
   async compareCommits(

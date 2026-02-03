@@ -12,6 +12,7 @@ import {
   CheckIcon,
 } from "@phosphor-icons/react";
 import { api } from "@lib/api";
+import { ActionsStatus } from "./actions-status";
 
 type Session = Awaited<ReturnType<typeof api.sessions.get>>["data"][number];
 
@@ -58,7 +59,16 @@ export function SessionCard({ session }: SessionCardProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-lg truncate">{session.repo}</CardTitle>
+            <CardTitle className="text-lg truncate">
+              <a
+                href={`https://github.com/${session.repo}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-primary"
+              >
+                {session.repo}
+              </a>
+            </CardTitle>
             <CardDescription className="flex items-center gap-1 mt-1">
               <GitBranchIcon className="w-3 h-3" />
               {session.branch}
@@ -93,6 +103,7 @@ export function SessionCard({ session }: SessionCardProps) {
             )}
           </Button>
         </div>
+        <ActionsStatus repo={session.repo} branch={session.branch} />
 
         <div className="flex gap-2">
           {session.status === "running" ? (

@@ -31,3 +31,15 @@ export const githubTokens = sqliteTable("github_tokens", {
     .$defaultFn(() => new Date())
     .$onUpdateFn(() => new Date()),
 });
+
+export const projects = sqliteTable("projects", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: text("name").notNull(),
+  repo: text("repo").notNull(),
+  defaultBranch: text("default_branch").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

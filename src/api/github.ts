@@ -79,4 +79,18 @@ export const githubRouter = new Elysia()
         state: t.Union([t.Literal("open"), t.Literal("closed"), t.Literal("all")]),
       }),
     },
+  )
+  .get(
+    "/api/github/:owner/repo/:repo/actions/runs",
+    async ({ github, params, query }) => {
+      return await github.listWorkflowRuns(params.owner, params.repo, {
+        branch: query.branch,
+        perPage: 1,
+      });
+    },
+    {
+      query: t.Object({
+        branch: t.Optional(t.String()),
+      }),
+    },
   );

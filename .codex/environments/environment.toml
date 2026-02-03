@@ -3,7 +3,7 @@ version = 1
 name = "opencode-manager"
 
 [setup]
-script = ""
+script = "cp ~/Projetos/opencode-manager/.env .env"
 
 [[actions]]
 name = "Run"
