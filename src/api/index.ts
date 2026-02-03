@@ -9,6 +9,9 @@ export function getCookieSchema() {
   });
 }
 
-export const apiRouter = new Elysia().use(sessionsRouter).use(githubRouter).use(authRouter);
+export const apiRouter = new Elysia({ prefix: "/api" })
+  .use(sessionsRouter)
+  .use(githubRouter)
+  .use(authRouter);
 
 export type ApiRouter = typeof apiRouter;

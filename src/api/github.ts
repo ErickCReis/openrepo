@@ -5,7 +5,7 @@ import { schema } from "@db";
 import { db } from "@db";
 import { eq } from "drizzle-orm";
 
-export const githubRouter = new Elysia()
+export const githubRouter = new Elysia({ prefix: "/github" })
   .guard({
     cookie: getCookieSchema(),
   })
@@ -27,17 +27,17 @@ export const githubRouter = new Elysia()
 
     return { github: createGitHubClient(tokenRecord.accessToken) };
   })
-  .get("/api/auth/github/repos", async ({ github }) => {
+  .get("/repos", async ({ github }) => {
     return await github.listUserRepos();
   })
-  .get("/api/github/:owner/repo/:repo", async ({ github, params }) => {
+  .get("/:owner/repo/:repo", async ({ github, params }) => {
     return await github.getRepo(params.owner, params.repo);
   })
-  .get("/api/github/:owner/repo/:repo/branches", async ({ github, params }) => {
+  .get("/:owner/repo/:repo/branches", async ({ github, params }) => {
     return await github.listBranches(params.owner, params.repo);
   })
   .post(
-    "/api/github/:owner/repo/:repo/branches",
+    "/:owner/repo/:repo/branches",
     async ({ github, params, body }) => {
       return await github.createBranch(params.owner, params.repo, body.branchName, body.baseBranch);
     },
@@ -49,7 +49,7 @@ export const githubRouter = new Elysia()
     },
   )
   .post(
-    "/api/github/:owner/repo/:repo/pulls",
+    "/:owner/repo/:repo/pulls",
     async ({ github, params, body }) => {
       return await github.createPullRequest(
         params.owner,
@@ -70,7 +70,7 @@ export const githubRouter = new Elysia()
     },
   )
   .get(
-    "/api/github/:owner/repo/:repo/pulls",
+    "/:owner/repo/:repo/pulls",
     async ({ github, params, query }) => {
       return await github.getPullRequests(params.owner, params.repo, query.state || "open");
     },
