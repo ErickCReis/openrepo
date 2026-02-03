@@ -2,18 +2,11 @@ import { Elysia, redirect } from "elysia";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
+import { createGitHubClient } from "@lib/github-client";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
-
-export interface GitHubUser {
-  id: number;
-  login: string;
-  email: string | null;
-  name: string | null;
-  avatar_url: string;
-}
 
 async function exchangeCodeForToken(code: string): Promise<string> {
   const response = await fetch("https://github.com/login/oauth/access_token", {
@@ -36,21 +29,6 @@ async function exchangeCodeForToken(code: string): Promise<string> {
   }
 
   return data.access_token;
-}
-
-async function getGitHubUser(accessToken: string): Promise<GitHubUser> {
-  const response = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github.v3+json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to get GitHub user info");
-  }
-
-  return response.json();
 }
 
 export const authRouter = new Elysia()
@@ -86,7 +64,8 @@ export const authRouter = new Elysia()
 
       try {
         const accessToken = await exchangeCodeForToken(code);
-        const githubUser = await getGitHubUser(accessToken);
+        const github = createGitHubClient(accessToken);
+        const githubUser = await github.getUser();
 
         const [existingUser] = await db
           .select()
@@ -101,22 +80,22 @@ export const authRouter = new Elysia()
             .update(schema.githubTokens)
             .set({
               accessToken,
-              updatedAt: new Date(),
+              username: githubUser.login,
+              email: githubUser.email,
             })
             .where(eq(schema.githubTokens.githubUserId, githubUser.id));
           tokenId = existingUser.id;
         } else {
-          const { randomUUID } = await import("node:crypto");
-          tokenId = randomUUID();
-          await db.insert(schema.githubTokens).values({
-            id: tokenId,
-            githubUserId: githubUser.id,
-            username: githubUser.login,
-            email: githubUser.email,
-            accessToken,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
+          const [inserted] = await db
+            .insert(schema.githubTokens)
+            .values({
+              githubUserId: githubUser.id,
+              username: githubUser.login,
+              email: githubUser.email,
+              accessToken,
+            })
+            .returning();
+          tokenId = inserted.id;
         }
 
         cookie.github_token_id.value = tokenId;
@@ -124,7 +103,8 @@ export const authRouter = new Elysia()
         return redirect(`${APP_URL}/?oauth_success=true`);
       } catch (err) {
         console.error("GitHub OAuth error:", err);
-        return redirect(`${APP_URL}/?oauth_error=auth_failed`);
+        const message = err instanceof Error ? err.message : "auth_failed";
+        return redirect(`${APP_URL}/?oauth_error=${encodeURIComponent(message)}`);
       }
     },
     {

@@ -40,6 +40,14 @@ export interface RepoInfo {
   private: boolean;
 }
 
+export interface GitHubUser {
+  id: number;
+  login: string;
+  email: string | null;
+  name: string | null;
+  avatar_url: string;
+}
+
 export interface UserRepoInfo {
   id: number;
   name: string;
@@ -75,6 +83,11 @@ export class GitHubClient {
 
     const data = await response.json();
     return { data, status: response.status };
+  }
+
+  async getUser(): Promise<GitHubUser> {
+    const { data } = await this.request<GitHubUser>("/user");
+    return data;
   }
 
   async getRepo(owner: string, repo: string): Promise<RepoInfo> {
