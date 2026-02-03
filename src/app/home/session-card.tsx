@@ -11,7 +11,7 @@ import {
   CopyIcon,
   CheckIcon,
 } from "@phosphor-icons/react";
-import { api, unwrap } from "@lib/api";
+import { api } from "@lib/api";
 
 type Session = Awaited<ReturnType<typeof api.sessions.get>>["data"][number];
 
@@ -24,17 +24,26 @@ export function SessionCard({ session }: SessionCardProps) {
   const [copied, setCopied] = useState(false);
 
   const stopMutation = useMutation({
-    mutationFn: () => api.sessions({ id: session.id }).stop.post().then(unwrap),
+    mutationFn: async () => {
+      const { error } = await api.sessions({ id: session.id }).stop.post();
+      if (error) throw error.value;
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sessions"] }),
   });
 
   const startMutation = useMutation({
-    mutationFn: () => api.sessions({ id: session.id }).start.post().then(unwrap),
+    mutationFn: async () => {
+      const { error } = await api.sessions({ id: session.id }).start.post();
+      if (error) throw error.value;
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sessions"] }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.sessions({ id: session.id }).delete().then(unwrap),
+    mutationFn: async () => {
+      const { error } = await api.sessions({ id: session.id }).delete();
+      if (error) throw error.value;
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sessions"] }),
   });
 

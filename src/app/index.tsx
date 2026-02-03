@@ -18,14 +18,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error) => {
-        if (error instanceof Error && error.message === "Not authenticated") return false;
+        if (String(error) === "Not authenticated") return false;
         return failureCount < 3;
       },
     },
   },
   mutationCache: new MutationCache({
     onError: (error) => {
-      toast.error(error.message || "Something went wrong");
+      toast.error(error instanceof Error ? error.message : String(error) || "Something went wrong");
     },
   }),
 });

@@ -3,16 +3,15 @@ import { eq } from "drizzle-orm";
 import { sessionManager } from "@lib/session-manager";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
-import { AppError } from "@lib/error";
 
 export const sessionsRouter = new Elysia()
   .get("/api/sessions", async () => {
     return await sessionManager.listSessions();
   })
-  .get("/api/sessions/:id", async ({ params }) => {
+  .get("/api/sessions/:id", async ({ params, error }) => {
     const session = await sessionManager.getSession(params.id);
     if (!session) {
-      throw new AppError("Session not found", 404);
+      return error(404, "Session not found");
     }
     return session;
   })

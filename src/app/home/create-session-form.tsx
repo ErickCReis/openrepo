@@ -14,7 +14,7 @@ import {
   ComboboxItem,
   ComboboxEmpty,
 } from "@app/components/ui/combobox";
-import { api, unwrap } from "@lib/api";
+import { api } from "@lib/api";
 
 export function CreateSessionForm({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -23,13 +23,21 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
 
   const { data: githubUser } = useQuery({
     queryKey: ["githubUser"],
-    queryFn: () => api.auth.github.user.get().then(unwrap),
+    queryFn: async () => {
+      const { data, error } = await api.auth.github.user.get();
+      if (error) throw error.value;
+      return data;
+    },
     retry: false,
   });
 
   const { data: userRepos, isLoading: isLoadingRepos } = useQuery({
     queryKey: ["userRepos"],
-    queryFn: () => api.auth.github.repos.get().then(unwrap),
+    queryFn: async () => {
+      const { data, error } = await api.auth.github.repos.get();
+      if (error) throw error.value;
+      return data;
+    },
     enabled: !!githubUser,
     retry: false,
   });
@@ -37,7 +45,14 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
   const [owner, repo] = repoValue.split("/");
   const { data: repoBranches, isLoading: isLoadingBranches } = useQuery({
     queryKey: ["repoBranches", owner, repo],
-    queryFn: () => api.github({ owner: owner! }).repo({ repo: repo! }).branches.get().then(unwrap),
+    queryFn: async () => {
+      const { data, error } = await api
+        .github({ owner: owner! })
+        .repo({ repo: repo! })
+        .branches.get();
+      if (error) throw error.value;
+      return data;
+    },
     enabled: !!githubUser && !!owner && !!repo,
     retry: false,
   });
@@ -45,12 +60,11 @@ export function CreateSessionForm({ onClose }: { onClose: () => void }) {
   const form = useForm({
     defaultValues: { repo: "", branch: "main" },
     onSubmit: async ({ value }) => {
-      await api.sessions
-        .post({
-          repo: value.repo,
-          branch: value.branch,
-        })
-        .then(unwrap);
+      const { error } = await api.sessions.post({
+        repo: value.repo,
+        branch: value.branch,
+      });
+      if (error) throw error.value;
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       onClose();
     },

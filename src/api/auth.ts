@@ -3,18 +3,17 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
 import { GitHubClient } from "@lib/github-client";
-import { AppError } from "@lib/error";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
 export const authRouter = new Elysia()
-  .get("/api/auth/github", () => {
+  .get("/api/auth/github", ({ error }) => {
     if (!GITHUB_CLIENT_ID) {
-      throw new AppError(
-        "GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+      return error(
         500,
+        "GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
       );
     }
 
@@ -93,11 +92,11 @@ export const authRouter = new Elysia()
   )
   .get(
     "/api/auth/github/user",
-    async ({ cookie }) => {
+    async ({ cookie, error }) => {
       const tokenId = cookie.github_token_id.value;
 
       if (!tokenId) {
-        throw new AppError("Not authenticated", 401);
+        return error(401, "Not authenticated");
       }
 
       const [tokenRecord] = await db
@@ -107,7 +106,7 @@ export const authRouter = new Elysia()
         .limit(1);
 
       if (!tokenRecord) {
-        throw new AppError("Token not found", 401);
+        return error(401, "Token not found");
       }
 
       return {

@@ -12,7 +12,7 @@ import {
   DialogDescription,
 } from "@app/components/ui/dialog";
 import { GithubLogoIcon, PlusIcon } from "@phosphor-icons/react";
-import { api, unwrap } from "@lib/api";
+import { api } from "@lib/api";
 import { CreateSessionForm } from "./create-session-form";
 import { SessionCard } from "./session-card";
 
@@ -22,7 +22,11 @@ export function Home() {
 
   const { data: githubUser } = useQuery({
     queryKey: ["githubUser"],
-    queryFn: () => api.auth.github.user.get().then(unwrap),
+    queryFn: async () => {
+      const { data, error } = await api.auth.github.user.get();
+      if (error) throw error.value;
+      return data;
+    },
     retry: false,
   });
 
@@ -45,7 +49,10 @@ export function Home() {
   }, [queryClient]);
 
   const disconnectMutation = useMutation({
-    mutationFn: () => api.auth.github.delete().then(unwrap),
+    mutationFn: async () => {
+      const { error } = await api.auth.github.delete();
+      if (error) throw error.value;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["githubUser"] });
     },
@@ -57,7 +64,11 @@ export function Home() {
     isError,
   } = useQuery({
     queryKey: ["sessions"],
-    queryFn: () => api.sessions.get().then(unwrap),
+    queryFn: async () => {
+      const { data, error } = await api.sessions.get();
+      if (error) throw error.value;
+      return data;
+    },
     refetchInterval: 5000,
   });
 

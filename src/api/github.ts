@@ -4,16 +4,15 @@ import { getCookieSchema } from "@api";
 import { schema } from "@db";
 import { db } from "@db";
 import { eq } from "drizzle-orm";
-import { AppError } from "@lib/error";
 
 export const githubRouter = new Elysia()
   .guard({
     cookie: getCookieSchema(),
   })
-  .resolve(async ({ cookie }) => {
+  .resolve(async ({ cookie, error }) => {
     const tokenId = cookie.github_token_id?.value;
     if (!tokenId) {
-      throw new AppError("Not authenticated", 401);
+      return error(401, "Not authenticated");
     }
 
     const [tokenRecord] = await db
@@ -23,7 +22,7 @@ export const githubRouter = new Elysia()
       .limit(1);
 
     if (!tokenRecord) {
-      throw new AppError("Token not found", 401);
+      return error(401, "Token not found");
     }
 
     return { github: createGitHubClient(tokenRecord.accessToken) };
