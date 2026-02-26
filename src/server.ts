@@ -1,13 +1,15 @@
 import { Elysia, status } from "elysia";
 import { eq } from "drizzle-orm";
+import { resolve } from "path";
 import index from "./index.html";
 import { db, schema } from "./db";
 import { apiRouter } from "./api";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { sessionManager } from "./lib/session-manager";
+import { proxySessionWebRequest } from "./lib/opencode-proxy";
 
 migrate(db, { migrationsFolder: "src/db/migrations" });
-const SESSIONS_DIR = process.env.SESSIONS_DIR || "./sessions";
+const SESSIONS_DIR = resolve(process.env.SESSIONS_DIR || "./sessions");
 
 function getSessionRepoDir(sessionId: string) {
   return `${SESSIONS_DIR}/${sessionId}/repo`;
@@ -17,7 +19,35 @@ function encodeDirectoryPath(directory: string) {
   return Buffer.from(directory).toString("base64url");
 }
 
-async function getOrCreateOpencodeSession(port: number, directory: string): Promise<string> {
+function decodeDirectoryPath(encodedDirectory: string) {
+  try {
+    return Buffer.from(encodedDirectory, "base64url").toString();
+  } catch {
+    return null;
+  }
+}
+
+function getSessionIdFromEncodedDirectory(encodedDirectory: string) {
+  const directory = decodeDirectoryPath(encodedDirectory);
+  if (!directory) {
+    return null;
+  }
+
+  const prefix = `${SESSIONS_DIR}/`;
+  if (!directory.startsWith(prefix) || !directory.endsWith("/repo")) {
+    return null;
+  }
+
+  const sessionId = directory.slice(prefix.length, -"/repo".length);
+  if (!sessionId || sessionId.includes("/")) {
+    return null;
+  }
+
+  return sessionId;
+}
+
+async function getOrCreateOpencodeSession(directory: string): Promise<string> {
+  const port = sessionManager.getOpenCodePort();
   const listUrl = new URL(`http://127.0.0.1:${port}/session`);
   listUrl.searchParams.set("directory", directory);
 
@@ -62,6 +92,44 @@ async function getOrCreateOpencodeSession(port: number, directory: string): Prom
   return created.id;
 }
 
+async function resolveOpencodeSessionPath(sessionId: string) {
+  const session = await sessionManager.getSession(sessionId);
+  if (!session) {
+    throw status(404, "Session not found");
+  }
+  if (session.status !== "running") {
+    await sessionManager.startOpenCode(sessionId);
+  }
+
+  const started = await sessionManager.getSession(sessionId);
+  if (!started) {
+    throw status(404, "Session not found");
+  }
+
+  const repoDir = getSessionRepoDir(sessionId);
+  const opencodeSessionId = await getOrCreateOpencodeSession(repoDir);
+  const encodedDir = encodeDirectoryPath(repoDir);
+  return `/${encodedDir}/session/${opencodeSessionId}`;
+}
+
+async function proxyEncodedSessionRoute(
+  request: Request,
+  encodedDirectory: string,
+  upstreamPathname: string,
+) {
+  const sessionId = getSessionIdFromEncodedDirectory(encodedDirectory);
+  if (!sessionId) {
+    throw status(404, "Session not found");
+  }
+
+  const session = await sessionManager.getSession(sessionId);
+  if (!session) {
+    throw status(404, "Session not found");
+  }
+
+  return await proxySessionWebRequest(request, sessionId, upstreamPathname);
+}
+
 await db
   .update(schema.sessions)
   .set({ status: "stopped" })
@@ -83,49 +151,28 @@ const app = new Elysia({
     });
   })
   .all("/opencode/:id", async ({ params, request }) => {
-    const session = await sessionManager.getSession(params.id);
-    if (!session) {
-      throw status(404, "Session not found");
-    }
-    if (session.status !== "running") {
-      await sessionManager.startOpenCode(params.id);
-    }
-
-    const started = await sessionManager.getSession(params.id);
-    if (!started) {
-      throw status(404, "Session not found");
-    }
-
-    const repoDir = getSessionRepoDir(params.id);
-    const opencodeSessionId = await getOrCreateOpencodeSession(started.port, repoDir);
-    const encodedDir = encodeDirectoryPath(repoDir);
+    const upstreamPath = await resolveOpencodeSessionPath(params.id);
     const current = new URL(request.url);
-
-    return Response.redirect(
-      `http://localhost:${started.port}/${encodedDir}/session/${opencodeSessionId}${current.search}`,
-      302,
-    );
+    return Response.redirect(`${upstreamPath}${current.search}`, 302);
   })
   .all("/opencode/:id/*", async ({ params, request }) => {
-    const session = await sessionManager.getSession(params.id);
-    if (!session) {
-      throw status(404, "Session not found");
-    }
-    if (session.status !== "running") {
-      await sessionManager.startOpenCode(params.id);
-    }
-
-    const started = await sessionManager.getSession(params.id);
-    if (!started) {
-      throw status(404, "Session not found");
-    }
-
     const path = params["*"] || "";
-    const current = new URL(request.url);
+    if (path === "" || path === "/") {
+      const upstreamPath = await resolveOpencodeSessionPath(params.id);
+      const current = new URL(request.url);
+      return Response.redirect(`${upstreamPath}${current.search}`, 302);
+    }
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    return Response.redirect(
-      `http://localhost:${started.port}${normalizedPath}${current.search}`,
-      302,
+    return await proxySessionWebRequest(request, params.id, normalizedPath);
+  })
+  .all("/:encoded/session", async ({ params, request }) => {
+    return await proxyEncodedSessionRoute(request, params.encoded, `/${params.encoded}/session`);
+  })
+  .all("/:encoded/session/:opencodeSessionId", async ({ params, request }) => {
+    return await proxyEncodedSessionRoute(
+      request,
+      params.encoded,
+      `/${params.encoded}/session/${params.opencodeSessionId}`,
     );
   })
   .use(apiRouter)
@@ -144,6 +191,7 @@ const gracefulShutdown = async () => {
     .update(schema.sessions)
     .set({ status: "stopped" })
     .where(eq(schema.sessions.status, "running"));
+  await sessionManager.shutdownOpenCodeServer();
   process.exit(0);
 };
 

@@ -14,7 +14,7 @@ import {
 import { api } from "@lib/api";
 import { ActionsStatus } from "./actions-status";
 
-type Session = Awaited<ReturnType<typeof api.sessions.get>>["data"][number];
+type Session = NonNullable<Awaited<ReturnType<typeof api.sessions.get>>["data"]>[number];
 
 interface SessionCardProps {
   session: Session;

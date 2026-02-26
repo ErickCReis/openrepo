@@ -41,6 +41,16 @@ function rewriteOpenCodeHtml(html: string, sessionId: string) {
   return rewritten.replace("<head>", `<head>${bootstrap}`);
 }
 
+function rewriteOpenCodeTextAsset(content: string, sessionId: string) {
+  const assetPrefix = `/opencode/${sessionId}/assets/`;
+  return content
+    .replaceAll('"/assets/', `"${assetPrefix}`)
+    .replaceAll("'/assets/", `'${assetPrefix}`)
+    .replaceAll("`/assets/", `\`${assetPrefix}`)
+    .replaceAll("(/assets/", `(${assetPrefix}`)
+    .replaceAll("=/assets/", `=${assetPrefix}`);
+}
+
 export async function proxySessionRequest(
   request: Request,
   sessionId: string,
@@ -80,7 +90,7 @@ export async function proxySessionRequest(
   };
 
   try {
-    const response = await runProxyFetch(session.port);
+    const response = await runProxyFetch(sessionManager.getOpenCodePort());
     const responseHeaders = buildProxyResponseHeaders(response.headers);
     return new Response(response.body, {
       status: response.status,
@@ -88,15 +98,9 @@ export async function proxySessionRequest(
       headers: responseHeaders,
     });
   } catch {
-    // Session state can drift after process restarts; attempt one automatic recovery.
-    await sessionManager.stopSession(sessionId).catch(() => undefined);
-    await sessionManager.startOpenCode(sessionId);
-    const refreshed = await sessionManager.getSession(sessionId);
-    if (!refreshed) {
-      throw status(404, "Session not found");
-    }
-
-    const response = await runProxyFetch(refreshed.port);
+    // Runtime state can drift after process restarts; attempt one automatic recovery.
+    await sessionManager.restartOpenCodeServer();
+    const response = await runProxyFetch(sessionManager.getOpenCodePort());
     const responseHeaders = buildProxyResponseHeaders(response.headers);
     return new Response(response.body, {
       status: response.status,
@@ -113,13 +117,17 @@ export async function proxySessionWebRequest(
 ) {
   const response = await proxySessionRequest(request, sessionId, upstreamPathname);
   const contentType = response.headers.get("content-type") || "";
+  const isHtml = contentType.includes("text/html");
+  const isTextAsset = contentType.includes("javascript") || contentType.includes("css");
 
-  if (!contentType.includes("text/html")) {
+  if (!isHtml && !isTextAsset) {
     return response;
   }
 
-  const html = await response.text();
-  const rewritten = rewriteOpenCodeHtml(html, sessionId);
+  const content = await response.text();
+  const rewritten = isHtml
+    ? rewriteOpenCodeHtml(content, sessionId)
+    : rewriteOpenCodeTextAsset(content, sessionId);
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.delete("content-encoding");

@@ -37,9 +37,14 @@ Create a `.env` file:
 
 ```env
 COOKIE_SECRET=your-secret-key
+APP_URL=https://or.erickr.dev
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
+
+For GitHub OAuth, configure the callback URL as:
+
+`https://or.erickr.dev/api/auth/github/callback`
 
 ### Database Setup
 
@@ -60,6 +65,9 @@ The app will be available at `http://localhost:3000`.
 ```bash
 bun run start
 ```
+
+When deploying with Docker behind a reverse proxy, expose only port `3000` publicly.
+OpenCode worker ports stay internal and are proxied through `/opencode/:id/*`.
 
 ## Scripts
 

@@ -1,41 +1,120 @@
 import { $ } from "bun";
 import { mkdir } from "fs/promises";
 import { eq, asc } from "drizzle-orm";
+import { resolve } from "path";
 import { createOpencode } from "@opencode-ai/sdk";
 import { db, schema } from "../db";
-import { generateSessionSlug, getRandomPort } from "./utils";
+import { generateSessionSlug } from "./utils";
 
-// Store abort controllers for running sessions (in-memory, lost on restart)
-const sessionControllers = new Map<string, AbortController>();
+const SESSIONS_DIR = resolve(process.env.SESSIONS_DIR || "./sessions");
+const parsedSharedPort = Number.parseInt(process.env.OPENCODE_PORT || "4096", 10);
+const SHARED_OPENCODE_PORT = Number.isFinite(parsedSharedPort) ? parsedSharedPort : 4096;
 
-const SESSIONS_DIR = process.env.SESSIONS_DIR || "./sessions";
+let sharedServerController: AbortController | null = null;
+let sharedServerStarted = false;
+let sharedServerStarting: Promise<void> | null = null;
+
+function stopManagedSharedServer() {
+  if (sharedServerController) {
+    sharedServerController.abort();
+    sharedServerController = null;
+  }
+
+  sharedServerStarted = false;
+  sharedServerStarting = null;
+}
+
+async function isSharedServerReachable() {
+  try {
+    const response = await fetch(`http://127.0.0.1:${SHARED_OPENCODE_PORT}/session`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export interface CreateSessionInput {
   repo: string;
   branch: string;
 }
 
 export class SessionManager {
-  async createSession(input: CreateSessionInput) {
-    const id = generateSessionSlug(input.repo, input.branch);
-    const port = getRandomPort();
-    const sessionDir = `${SESSIONS_DIR}/${id}`;
-
-    await mkdir(sessionDir, { recursive: true });
-
+  private async writeSessionConfig(sessionId: string) {
+    const sessionDir = `${SESSIONS_DIR}/${sessionId}`;
     await Bun.write(
       `${sessionDir}/opencode.json`,
       JSON.stringify(
         {
           server: {
-            $schema: "https://opencode.ai/config.json",
-            port,
-            hostname: "0.0.0.0",
+            port: SHARED_OPENCODE_PORT,
+            hostname: "127.0.0.1",
           },
         },
         null,
         2,
       ),
     );
+  }
+
+  private async ensureSharedOpenCodeServer() {
+    if (sharedServerStarted && !(await isSharedServerReachable())) {
+      stopManagedSharedServer();
+    }
+
+    if (!sharedServerStarted && (await isSharedServerReachable())) {
+      sharedServerStarted = true;
+      return;
+    }
+
+    if (sharedServerStarting) {
+      await sharedServerStarting;
+      return;
+    }
+
+    sharedServerStarting = (async () => {
+      const controller = new AbortController();
+      sharedServerController = controller;
+
+      try {
+        await createOpencode({
+          port: SHARED_OPENCODE_PORT,
+          hostname: "127.0.0.1",
+          signal: controller.signal,
+        });
+        sharedServerStarted = true;
+      } catch (error) {
+        if (sharedServerController === controller) {
+          sharedServerController = null;
+        }
+        sharedServerStarted = false;
+        throw error;
+      } finally {
+        sharedServerStarting = null;
+      }
+    })();
+
+    await sharedServerStarting;
+  }
+
+  getOpenCodePort() {
+    return SHARED_OPENCODE_PORT;
+  }
+
+  async restartOpenCodeServer() {
+    stopManagedSharedServer();
+    await this.ensureSharedOpenCodeServer();
+  }
+
+  async shutdownOpenCodeServer() {
+    stopManagedSharedServer();
+  }
+
+  async createSession(input: CreateSessionInput) {
+    const id = generateSessionSlug(input.repo, input.branch);
+    const sessionDir = `${SESSIONS_DIR}/${id}`;
+
+    await mkdir(sessionDir, { recursive: true });
+    await this.writeSessionConfig(id);
 
     const [result] = await db
       .insert(schema.sessions)
@@ -43,7 +122,7 @@ export class SessionManager {
         id,
         repo: input.repo,
         branch: input.branch,
-        port,
+        port: SHARED_OPENCODE_PORT,
         status: "stopped",
         createdAt: new Date(),
       })
@@ -84,36 +163,12 @@ export class SessionManager {
   async startOpenCode(sessionId: string) {
     const session = await this.getSession(sessionId);
     if (!session) throw new Error("Session not found");
-
-    const port = getRandomPort();
-    const sessionDir = `${SESSIONS_DIR}/${sessionId}/repo`;
-
-    const controller = new AbortController();
-    sessionControllers.set(sessionId, controller);
-
-    const originalCwd = process.cwd();
-    try {
-      process.chdir(sessionDir);
-
-      await createOpencode({
-        port,
-        hostname: "0.0.0.0",
-        signal: controller.signal,
-      });
-    } catch (error) {
-      sessionControllers.delete(sessionId);
-      await db
-        .update(schema.sessions)
-        .set({ status: "stopped" })
-        .where(eq(schema.sessions.id, sessionId));
-      throw error;
-    } finally {
-      process.chdir(originalCwd);
-    }
+    await this.writeSessionConfig(sessionId);
+    await this.ensureSharedOpenCodeServer();
 
     await db
       .update(schema.sessions)
-      .set({ status: "running", port })
+      .set({ status: "running", port: SHARED_OPENCODE_PORT })
       .where(eq(schema.sessions.id, sessionId));
   }
 
@@ -121,21 +176,24 @@ export class SessionManager {
     const session = await this.getSession(sessionId);
     if (!session) throw new Error("Session not found");
 
-    const controller = sessionControllers.get(sessionId);
-    if (controller) {
-      controller.abort();
-      sessionControllers.delete(sessionId);
-    }
-
     await db
       .update(schema.sessions)
       .set({ status: "stopped" })
       .where(eq(schema.sessions.id, sessionId));
+
+    const running = await db
+      .select({ id: schema.sessions.id })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.status, "running"))
+      .limit(1);
+
+    if (running.length === 0) {
+      stopManagedSharedServer();
+    }
   }
 
   async deleteSession(sessionId: string) {
     await this.stopSession(sessionId);
-    sessionControllers.delete(sessionId);
 
     const sessionDir = `${SESSIONS_DIR}/${sessionId}`;
     try {
@@ -160,7 +218,7 @@ export class SessionManager {
       port: result.port,
       status: result.status,
       createdAt: result.createdAt,
-      serverUrl: `/opencode/${result.id}/`,
+      serverUrl: `/opencode/${result.id}`,
     };
   }
 
@@ -174,7 +232,7 @@ export class SessionManager {
       port: r.port,
       status: r.status,
       createdAt: r.createdAt,
-      serverUrl: `/opencode/${r.id}/`,
+      serverUrl: `/opencode/${r.id}`,
     }));
   }
 
