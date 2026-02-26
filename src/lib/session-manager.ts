@@ -29,7 +29,7 @@ export class SessionManager {
           server: {
             $schema: "https://opencode.ai/config.json",
             port,
-            hostname: "localhost",
+            hostname: "0.0.0.0",
           },
         },
         null,
@@ -97,9 +97,16 @@ export class SessionManager {
 
       await createOpencode({
         port,
-        hostname: "localhost",
+        hostname: "0.0.0.0",
         signal: controller.signal,
       });
+    } catch (error) {
+      sessionControllers.delete(sessionId);
+      await db
+        .update(schema.sessions)
+        .set({ status: "stopped" })
+        .where(eq(schema.sessions.id, sessionId));
+      throw error;
     } finally {
       process.chdir(originalCwd);
     }
@@ -153,7 +160,7 @@ export class SessionManager {
       port: result.port,
       status: result.status,
       createdAt: result.createdAt,
-      serverUrl: `http://localhost:${result.port}`,
+      serverUrl: `/opencode/${result.id}/`,
     };
   }
 
@@ -167,7 +174,7 @@ export class SessionManager {
       port: r.port,
       status: r.status,
       createdAt: r.createdAt,
-      serverUrl: `http://localhost:${r.port}`,
+      serverUrl: `/opencode/${r.id}/`,
     }));
   }
 

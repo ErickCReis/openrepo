@@ -1,6 +1,7 @@
 import { Elysia, t, status } from "elysia";
 import { eq } from "drizzle-orm";
 import { sessionManager } from "@lib/session-manager";
+import { proxySessionRequest } from "@lib/opencode-proxy";
 import { db, schema } from "@db";
 import { getCookieSchema } from "@api";
 import type { ElysiaWS } from "elysia/ws";
@@ -28,7 +29,7 @@ export const sessionsRouter = new Elysia({ prefix: "/sessions" })
     ),
     open: async (ws) => {
       sessionSockets.add(ws);
-      broadcastSessions();
+      void broadcastSessions();
     },
     close: (ws) => {
       sessionSockets.delete(ws);
@@ -99,6 +100,13 @@ export const sessionsRouter = new Elysia({ prefix: "/sessions" })
     const file = await sessionManager.readFile(params.id, filePath);
     const content = await file.text();
     return { content, path: filePath };
+  })
+  .all("/:id/proxy", async ({ params, request }) => {
+    return await proxySessionRequest(request, params.id, "/");
+  })
+  .all("/:id/proxy/*", async ({ params, request }) => {
+    const path = params["*"] || "";
+    return await proxySessionRequest(request, params.id, `/${path}`);
   })
   .post(
     "/:id/git",

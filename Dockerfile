@@ -34,8 +34,11 @@ ENV NODE_ENV=production
 # Final release image
 FROM base AS release
 
-# Install opencode-ai globally (needed for spawning opencode sessions)
-RUN bun add -g opencode-ai
+# Install opencode-ai globally and point `opencode` to the native binary.
+# The package ships a Node-based launcher script, but this image doesn't include Node.
+RUN bun add -g opencode-ai && \
+    ln -sf /root/.bun/install/global/node_modules/opencode-ai/bin/.opencode /usr/local/bin/opencode && \
+    opencode --version
 
 # Copy production dependencies
 COPY --from=install /temp/prod/node_modules node_modules

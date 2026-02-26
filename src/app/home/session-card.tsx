@@ -49,7 +49,10 @@ export function SessionCard({ session }: SessionCardProps) {
   });
 
   function copyUrl() {
-    void navigator.clipboard.writeText(session.serverUrl);
+    const url = session.serverUrl.startsWith("http")
+      ? session.serverUrl
+      : `${window.location.origin}${session.serverUrl}`;
+    void navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
